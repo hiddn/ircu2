@@ -105,6 +105,9 @@ int m_cprivmsg(struct Client* cptr, struct Client* sptr, int parc, char* parv[])
   if (parc < 4 || EmptyString(parv[3]))
     return need_more_params(sptr, "CPRIVMSG");
 
+  if (feature_bool(FEAT_IDLE_FROM_MSG))
+    cli_user(sptr)->last = CurrentTime;
+
   return whisper(sptr, parv[1], parv[2], parv[3], 0);
 }
 
