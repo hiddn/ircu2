@@ -84,6 +84,9 @@ UMKPASSWD_SRC = ${CRYPTO_SRC} \
 	memdebug.c \
 	umkpasswd.c
 
+PATRICIA_SRC = \
+	patricia.c
+
 IRCD_SRC = \
 	IPcheck.c \
 	channel.c \
@@ -216,7 +219,7 @@ IRCD_SRC = \
 	whowas.c \
 	y.tab.c
 
-SRC = ${IRCD_SRC} ${ENGINE_C} ${CRYPTO_SRC}
+SRC = ${IRCD_SRC} ${ENGINE_C} ${CRYPTO_SRC} ${PATRICIA_SRC}
 
 OBJS = ${SRC:%.c=%.o}
 
