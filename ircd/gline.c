@@ -121,14 +121,21 @@ struct Gline* BadChanGlineList = 0;
  * @param[in] prefix pointer to prefix_t. \a ip is converted to \a prefix before making patricia \a tree search.
  * @param[in] tree pointer to patricia_tree_t.
  * @param[in] node pointer to patricia_node_t.
+ * @param[in] stop_loop break loop when stop_loop = 0 (something break; alone can't do in nested loops).
  */
-#define gliterIpMask(gl, next, ip, prefix, tree, node)                                      \
-  if ((tree) == NULL)                                                                       \
-    (tree) = New_Patricia(128);                                                             \
-  (prefix) = ascii2prefix(0, (ip));                                                         \
-  if ((prefix))                                                                             \
-    for ((node) = patricia_search_best((tree), (prefix)); (node); (node) = (node)->parent)  \
-      gliter(PATRICIA_DATA_GET((node), struct Gline), (gl), (next), (tree), (node))
+#define gliterIpMask(gl, next, ip, prefix, tree, node, stop_loop) \
+  if ((tree) == NULL)                                             \
+    (tree) = New_Patricia(128);                                   \
+  (prefix) = ascii2prefix(0, (ip));                               \
+  if ((prefix))                                                   \
+    for ((node) = patricia_search_best((tree), (prefix));         \
+          (node);                                                 \
+          (node) = (node)->parent)                                \
+      if ((stop_loop))                                            \
+        break;                                                    \
+      else                                                        \
+        gliter(PATRICIA_DATA_GET(                                 \
+            (node), struct Gline), (gl), (next), (tree), (node))
 
 #define gliterIpMaskEND(prefix) Deref_Prefix(prefix)
 
@@ -1002,6 +1009,7 @@ gline_find(char *userhost, unsigned int flags)
   struct irc_in_addr mask;
   unsigned char bits;
   const char *cidr;
+  unsigned char stop_loop = 0;
 
   if ((flags & GLINE_IPMASK) && (!GlobalIpMaskPTree))
     return 0;
@@ -1026,7 +1034,7 @@ gline_find(char *userhost, unsigned int flags)
 
   if (*user != '$' && host && ipmask_parse(host, &mask, &bits)) {
     cidr = ircd_ntocidrmask(&mask, bits);
-    gliterIpMask(gline, sgline, cidr, prefix, GlobalIpMaskPTree, node) {
+    gliterIpMask(gline, sgline, cidr, prefix, GlobalIpMaskPTree, node, stop_loop) {
       if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL))
          || (flags & GLINE_LASTMOD && !gline->gl_lastmod))
         continue;
@@ -1034,38 +1042,36 @@ gline_find(char *userhost, unsigned int flags)
         if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0)
            || (!gline->gl_host && !host))
            && (ircd_strcmp(gline->gl_user, user) == 0)) {
-          /* Do not use `break` like in gliter(), as gliterIpMask() uses nested loops. */
-          MyFree(t_uh);
-          Deref_Prefix(prefix);
-          return gline;
+          stop_loop = 1;
+          break;
         }
       } else {
         if (((gline->gl_host && host && match(gline->gl_host, host) == 0)
            || (!gline->gl_host && !host))
            && (match(gline->gl_user, user) == 0)) {
-          /* Do not use `break` like in gliter(), as gliterIpMask() uses nested loops. */
-          MyFree(t_uh);
-          Deref_Prefix(prefix);
-          return gline;
+          stop_loop = 1;
+          break;
         }
       }
     } gliterIpMaskEND(prefix);
   }
 
-  gliter(GlobalGlineList, gline, sgline, GlobalIpMaskPTree, node) {
-    if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL))
-       || (flags & GLINE_LASTMOD && !gline->gl_lastmod))
-      continue;
-    else if (flags & GLINE_EXACT) {
-      if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0)
-         || (!gline->gl_host && !host))
-         && (ircd_strcmp(gline->gl_user, user) == 0))
-        break;
-    } else {
-      if (((gline->gl_host && host && match(gline->gl_host, host) == 0)
-         || (!gline->gl_host && !host))
-         && (match(gline->gl_user, user) == 0))
-        break;
+  if (!gline) {
+    gliter(GlobalGlineList, gline, sgline, GlobalIpMaskPTree, node) {
+      if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL))
+        || (flags & GLINE_LASTMOD && !gline->gl_lastmod))
+        continue;
+      else if (flags & GLINE_EXACT) {
+        if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0)
+          || (!gline->gl_host && !host))
+          && (ircd_strcmp(gline->gl_user, user) == 0))
+          break;
+      } else {
+        if (((gline->gl_host && host && match(gline->gl_host, host) == 0)
+          || (!gline->gl_host && !host))
+          && (match(gline->gl_user, user) == 0))
+          break;
+      }
     }
   }
 
@@ -1087,8 +1093,9 @@ gline_lookup(struct Client *cptr, unsigned int flags)
   struct Gline *sgline;
   patricia_node_t *node = 0;
   prefix_t *prefix = 0;
+  unsigned char stop_loop = 0;
 
-  gliterIpMask(gline, sgline, ircd_ntoa(&cli_ip(cptr)), prefix, GlobalIpMaskPTree, node) {
+  gliterIpMask(gline, sgline, ircd_ntoa(&cli_ip(cptr)), prefix, GlobalIpMaskPTree, node, stop_loop) {
     if ((flags & GLINE_GLOBAL && gline->gl_flags & GLINE_LOCAL) ||
         (flags & GLINE_LASTMOD && !gline->gl_lastmod))
       continue;
