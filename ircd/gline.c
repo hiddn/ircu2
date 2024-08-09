@@ -179,6 +179,7 @@ make_gline(char *user, char *host, char *reason, time_t expire, time_t lastmod,
   struct Gline *gline;
   prefix_t *prefix = 0;
   patricia_node_t *node = 0;
+  const char *cidr;
 
   assert(0 != expire);
 
@@ -212,7 +213,9 @@ make_gline(char *user, char *host, char *reason, time_t expire, time_t lastmod,
       gline->gl_flags |= GLINE_IPMASK;
       if (!GlobalIpMaskPTree)
         GlobalIpMaskPTree = New_Patricia(128);
-      prefix = ascii2prefix(0, host);
+      cidr = ircd_ntocidrmask(&gline->gl_addr, gline->gl_bits);
+      Debug((DEBUG_DEBUG, "make_gline(): cidr = %s, gline->gl_bits = %u", cidr, gline->gl_bits));
+      prefix = ascii2prefix(0, cidr);
       node = patricia_lookup(GlobalIpMaskPTree, prefix);
       assert(node != 0);
       gline->gl_next = (struct Gline *) node->data; /* then link it into list */
@@ -998,6 +1001,7 @@ gline_find(char *userhost, unsigned int flags)
   prefix_t *prefix = 0;
   struct irc_in_addr mask;
   unsigned char bits;
+  const char *cidr;
 
   if ((flags & GLINE_IPMASK) && (!GlobalIpMaskPTree))
     return 0;
@@ -1021,7 +1025,8 @@ gline_find(char *userhost, unsigned int flags)
   canon_userhost(t_uh, &user, &host, "*");
 
   if (*user != '$' && host && ipmask_parse(host, &mask, &bits)) {
-    gliterIpMask(gline, sgline, host, prefix, GlobalIpMaskPTree, node) {
+    cidr = ircd_ntocidrmask(&mask, bits);
+    gliterIpMask(gline, sgline, cidr, prefix, GlobalIpMaskPTree, node) {
       if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL))
          || (flags & GLINE_LASTMOD && !gline->gl_lastmod))
         continue;
