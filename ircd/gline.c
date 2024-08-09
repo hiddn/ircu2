@@ -1052,9 +1052,10 @@ gline_find(char *userhost, unsigned int flags)
           break;
         }
       } else {
-        if (((gline->gl_host && host && match(gline->gl_host, host) == 0)
-           || (!gline->gl_host && !host))
-           && (match(gline->gl_user, user) == 0)) {
+        /** No need to compare the gl->host or ip. gliterIpMask() returns only the list of glines
+         * that match the ip provided.
+        */
+        if (match(user, gline->gl_user) == 0) {
           stop_loop = 1;
           break;
         }
