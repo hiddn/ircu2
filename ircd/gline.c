@@ -1020,7 +1020,7 @@ gline_find(char *userhost, unsigned int flags)
 	  (flags & GLINE_LASTMOD && !gline->gl_lastmod))
 	continue;
       else if ((flags & GLINE_EXACT ? ircd_strcmp(gline->gl_user, userhost) :
-		match(gline->gl_user, userhost)) == 0)
+		match(userhost, gline->gl_user)) == 0)
 	return gline;
     }
   }
@@ -1073,9 +1073,9 @@ gline_find(char *userhost, unsigned int flags)
           && (ircd_strcmp(gline->gl_user, user) == 0))
           break;
       } else {
-        if (((gline->gl_host && host && match(gline->gl_host, host) == 0)
+        if (((gline->gl_host && host && match(host, gline->gl_host) == 0)
           || (!gline->gl_host && !host))
-          && (match(gline->gl_user, user) == 0))
+          && (match(user, gline->gl_user) == 0))
           break;
       }
     }
