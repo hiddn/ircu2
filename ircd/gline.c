@@ -1039,6 +1039,12 @@ gline_find(char *userhost, unsigned int flags)
          || (flags & GLINE_LASTMOD && !gline->gl_lastmod))
         continue;
       else if (flags & GLINE_EXACT) {
+        /** gliterIpMask() first finds the most specific node with the highest bit value.
+         * No need to iterate the rest if an exact match is required.
+        */
+        if (node->bit < (unsigned int)bits)
+          stop_loop = 1;
+          break;
         if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0)
            || (!gline->gl_host && !host))
            && (ircd_strcmp(gline->gl_user, user) == 0)) {
