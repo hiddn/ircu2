@@ -122,12 +122,13 @@ struct Gline* BadChanGlineList = 0;
  * @param[in] tree pointer to patricia_tree_t.
  * @param[in] node pointer to patricia_node_t.
  */
-#define gliterIpMask(gl, next, ip, prefix, tree, node)                                    \
-  if ((tree) == NULL)                                                                     \
-    (tree) = New_Patricia(128);                                                           \
-  (prefix) = ascii2prefix(0, (ip));                                                       \
-  for ((node) = patricia_search_best((tree), (prefix)); (node); (node) = (node)->parent)  \
-    gliter(PATRICIA_DATA_GET((node), struct Gline), (gl), (next), (tree), (node))
+#define gliterIpMask(gl, next, ip, prefix, tree, node)                                      \
+  if ((tree) == NULL)                                                                       \
+    (tree) = New_Patricia(128);                                                             \
+  (prefix) = ascii2prefix(0, (ip));                                                         \
+  if ((prefix))                                                                             \
+    for ((node) = patricia_search_best((tree), (prefix)); (node); (node) = (node)->parent)  \
+      gliter(PATRICIA_DATA_GET((node), struct Gline), (gl), (next), (tree), (node))
 
 #define gliterIpMaskEND(prefix) Deref_Prefix(prefix)
 
