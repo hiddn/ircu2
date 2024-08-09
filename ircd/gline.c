@@ -129,7 +129,7 @@ struct Gline* BadChanGlineList = 0;
   for ((node) = patricia_search_best((tree), (prefix)); (node); (node) = (node)->parent)  \
     gliter(PATRICIA_DATA_GET((node), struct Gline), (gl), (next), (tree), (node))
 
-#define gliterIpMaskEND(prefix) Deref_Prefix (prefix)
+#define gliterIpMaskEND(prefix) Deref_Prefix(prefix)
 
 /** Find canonical user and host for a string.
  * If \a userhost starts with '$', assign \a userhost to *user_p and NULL to *host_p.
@@ -1027,6 +1027,7 @@ gline_find(char *userhost, unsigned int flags)
            && (ircd_strcmp(gline->gl_user, user) == 0)) {
           /* Do not use `break` like in gliter(), as gliterIpMask() uses nested loops. */
           MyFree(t_uh);
+          Deref_Prefix(prefix);
           return gline;
         }
       } else {
@@ -1035,6 +1036,7 @@ gline_find(char *userhost, unsigned int flags)
            && (match(gline->gl_user, user) == 0)) {
           /* Do not use `break` like in gliter(), as gliterIpMask() uses nested loops. */
           MyFree(t_uh);
+          Deref_Prefix(prefix);
           return gline;
         }
       }
@@ -1089,8 +1091,10 @@ gline_lookup(struct Client *cptr, unsigned int flags)
     //TODO: Replace the below check with an assert().
     if (!ipmask_check(&cli_ip(cptr), &gline->gl_addr, gline->gl_bits))
       continue;
-    if (GlineIsActive(gline))
+    if (GlineIsActive(gline)) {
+      Deref_Prefix(prefix);
       return gline;
+    }
   } gliterIpMaskEND(prefix);
 
   gliter(GlobalGlineList, gline, sgline, GlobalIpMaskPTree, node) {
