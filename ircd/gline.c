@@ -1019,20 +1019,20 @@ gline_find(char *userhost, unsigned int flags)
   if (*user != '$' && host && ipmask_parse(host, &mask, &bits)) {
     gliterIpMask(gline, sgline, host, prefix, GlobalIpMaskPTree, node) {
       if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL))
-        || (flags & GLINE_LASTMOD && !gline->gl_lastmod))
+         || (flags & GLINE_LASTMOD && !gline->gl_lastmod))
         continue;
       else if (flags & GLINE_EXACT) {
         if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0)
-          || (!gline->gl_host && !host))
-          && (ircd_strcmp(gline->gl_user, user) == 0)) {
+           || (!gline->gl_host && !host))
+           && (ircd_strcmp(gline->gl_user, user) == 0)) {
           /* Do not use `break` like in gliter(), as gliterIpMask() uses nested loops. */
           MyFree(t_uh);
           return gline;
         }
       } else {
         if (((gline->gl_host && host && match(gline->gl_host, host) == 0)
-        || (!gline->gl_host && !host))
-        && (match(gline->gl_user, user) == 0)) {
+           || (!gline->gl_host && !host))
+           && (match(gline->gl_user, user) == 0)) {
           /* Do not use `break` like in gliter(), as gliterIpMask() uses nested loops. */
           MyFree(t_uh);
           return gline;
@@ -1042,19 +1042,19 @@ gline_find(char *userhost, unsigned int flags)
   }
 
   gliter(GlobalGlineList, gline, sgline, GlobalIpMaskPTree, node) {
-    if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
-  (flags & GLINE_LASTMOD && !gline->gl_lastmod))
+    if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL))
+       || (flags & GLINE_LASTMOD && !gline->gl_lastmod))
       continue;
     else if (flags & GLINE_EXACT) {
       if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0)
-          || (!gline->gl_host && !host)) &&
-          (ircd_strcmp(gline->gl_user, user) == 0))
-  break;
+         || (!gline->gl_host && !host))
+         && (ircd_strcmp(gline->gl_user, user) == 0))
+        break;
     } else {
       if (((gline->gl_host && host && match(gline->gl_host, host) == 0)
-          || (!gline->gl_host && !host)) &&
-    (match(gline->gl_user, user) == 0))
-  break;
+         || (!gline->gl_host && !host))
+         && (match(gline->gl_user, user) == 0))
+        break;
     }
   }
 
