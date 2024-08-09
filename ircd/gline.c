@@ -110,7 +110,7 @@ struct Gline* BadChanGlineList = 0;
       ; /* empty statement */				\
     else
 
-/** Iterate through \a list of ipmask-based G-lines that could match \a ip.
+/** Iterate through \a list of ipmask-based G-lines that match \a ip.
  * This will return the most specific glines first (i.e cidr /32 before /31).
  * i.e., follow it with braces and use whatever you passed as \a gl
  * as a single G-line to be acted upon.
