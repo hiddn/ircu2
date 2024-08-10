@@ -201,7 +201,7 @@ make_gline(char *user, char *host, char *reason, time_t expire, time_t lastmod,
 	   time_t lifetime, unsigned int flags)
 {
   struct Gline *gline;
-  struct Gline *gl_list;
+  struct Gline **gl_list;
   prefix_t *prefix = 0;
   patricia_node_t *node = 0;
   const char *cidr;
@@ -221,7 +221,7 @@ make_gline(char *user, char *host, char *reason, time_t expire, time_t lastmod,
   if (flags & GLINE_BADCHAN) { /* set a BADCHAN gline */
     DupString(gline->gl_user, user); /* first, remember channel */
     gline->gl_host = NULL;
-    gl_list = BadChanGlineList;
+    gl_list = &BadChanGlineList;
   } else {
     DupString(gline->gl_user, user); /* remember them... */
     if (*user != '$')
@@ -238,18 +238,18 @@ make_gline(char *user, char *host, char *reason, time_t expire, time_t lastmod,
       prefix = ascii2prefix(0, cidr);
       node = patricia_lookup(GlobalIpMaskPTree, prefix);
       assert(node != 0);
-      gl_list = (struct Gline *) node->data;
+      gl_list = (struct Gline **) &node->data;
       Deref_Prefix(prefix);
     }
     else {
-      gl_list = GlobalGlineList;
+      gl_list = &GlobalGlineList;
     }
   }
-  gline->gl_next = gl_list; /* then link it into list */
-  gline->gl_prev_p = &gl_list;
-  if (gl_list)
-    gl_list->gl_prev_p = &gline->gl_next;
-  gl_list = gline;
+  gline->gl_next = *gl_list; /* then link it into list */
+  gline->gl_prev_p = gl_list;
+  if (*gl_list)
+    (*gl_list)->gl_prev_p = &gline->gl_next;
+  *gl_list = gline;
 
   return gline;
 }
