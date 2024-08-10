@@ -1009,12 +1009,12 @@ gline_find(char *userhost, unsigned int flags)
 
   if (flags & (GLINE_BADCHAN | GLINE_ANY)) {
     gliter(BadChanGlineList, gline, sgline, GlobalIpMaskPTree, node) {
-        if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
-	  (flags & GLINE_LASTMOD && !gline->gl_lastmod))
-	continue;
+      if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
+          (flags & GLINE_LASTMOD && !gline->gl_lastmod))
+        continue;
       else if ((flags & GLINE_EXACT ? ircd_strcmp(gline->gl_user, userhost) :
-		match(userhost, gline->gl_user)) == 0)
-	return gline;
+                match(userhost, gline->gl_user)) == 0)
+        return gline;
     }
   }
 
@@ -1028,8 +1028,8 @@ gline_find(char *userhost, unsigned int flags)
   if (*user != '$' && host && ipmask_parse(host, &mask, &bits)) {
     cidr = ircd_ntocidrmask(&mask, bits);
     gliterIpMask(gline, sgline, cidr, prefix, GlobalIpMaskPTree, node, stop_loop) {
-      if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL))
-         || (flags & GLINE_LASTMOD && !gline->gl_lastmod))
+      if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
+          (flags & GLINE_LASTMOD && !gline->gl_lastmod))
         continue;
       else if (flags & GLINE_EXACT) {
         /** gliterIpMask() first finds the most specific node with the highest bit value.
@@ -1038,9 +1038,9 @@ gline_find(char *userhost, unsigned int flags)
         if (node->bit < (unsigned int)bits)
           stop_loop = 1;
           break;
-        if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0)
-           || (!gline->gl_host && !host))
-           && (ircd_strcmp(gline->gl_user, user) == 0)) {
+        if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0) ||
+            (!gline->gl_host && !host)) &&
+            (ircd_strcmp(gline->gl_user, user) == 0)) {
           stop_loop = 1;
           break;
         }
@@ -1058,18 +1058,18 @@ gline_find(char *userhost, unsigned int flags)
 
   if (!gline) {
     gliter(GlobalGlineList, gline, sgline, GlobalIpMaskPTree, node) {
-      if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL))
-        || (flags & GLINE_LASTMOD && !gline->gl_lastmod))
+      if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
+          (flags & GLINE_LASTMOD && !gline->gl_lastmod))
         continue;
       else if (flags & GLINE_EXACT) {
-        if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0)
-          || (!gline->gl_host && !host))
-          && (ircd_strcmp(gline->gl_user, user) == 0))
+        if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0) ||
+            (!gline->gl_host && !host)) &&
+            (ircd_strcmp(gline->gl_user, user) == 0))
           break;
       } else {
-        if (((gline->gl_host && host && match(host, gline->gl_host) == 0)
-          || (!gline->gl_host && !host))
-          && (match(user, gline->gl_user) == 0))
+        if (((gline->gl_host && host && match(host, gline->gl_host) == 0) ||
+            (!gline->gl_host && !host)) &&
+            (match(user, gline->gl_user) == 0))
           break;
       }
     }
