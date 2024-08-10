@@ -124,8 +124,10 @@ struct Gline* BadChanGlineList = 0;
  * @param[in] stop_loop break loop when stop_loop = 0 (something break; alone can't do in nested loops).
  */
 #define gliterIpMask(gl, next, ip, prefix, tree, node, stop_loop) \
+  (stop_loop) = 0;                                                \
   if ((tree) == NULL)                                             \
     (tree) = New_Patricia(128);                                   \
+  assert((tree));                                                 \
   (prefix) = ascii2prefix(0, (ip));                               \
   if ((prefix))                                                   \
     for ((node) = patricia_search_best((tree), (prefix));         \
@@ -134,8 +136,23 @@ struct Gline* BadChanGlineList = 0;
       if ((stop_loop))                                            \
         break;                                                    \
       else                                                        \
-        gliter(PATRICIA_DATA_GET(                                 \
-            (node), struct Gline), (gl), (next), (tree), (node))
+        gliter((struct Gline *)(node)->data, (gl),                \
+                (next), (tree), (node))
+
+#define gliterExactIpMask(gl, next, ip, prefix, tree, node, stop_loop)  \
+  (stop_loop) = 0;                                                      \
+  (node) = 0;                                                           \
+  if ((tree) == NULL)                                                   \
+    (tree) = New_Patricia(128);                                         \
+  assert((tree));                                                       \
+  (prefix) = ascii2prefix(0, (ip));                                     \
+  if ((prefix))                                                         \
+    (node) = patricia_search_exact((tree), (prefix));                   \
+  if (!(node))                                                          \
+    ;  /* empty statement */                                            \
+  else                                                                  \
+    gliter((struct Gline *)(node)->data, (gl),                          \
+            (next), (tree), (node))
 
 #define gliterIpMaskEND(prefix) Deref_Prefix(prefix)
 
@@ -1027,33 +1044,32 @@ gline_find(char *userhost, unsigned int flags)
 
   if (*user != '$' && host && ipmask_parse(host, &mask, &bits)) {
     cidr = ircd_ntocidrmask(&mask, bits);
-    gliterIpMask(gline, sgline, cidr, prefix, GlobalIpMaskPTree, node, stop_loop) {
-      if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
-          (flags & GLINE_LASTMOD && !gline->gl_lastmod))
-        continue;
-      else if (flags & GLINE_EXACT) {
-        /** gliterIpMask() first finds the most specific node with the highest bit value.
-         * No need to iterate the rest if an exact match is required.
-        */
-        if (node->bit < (unsigned int)bits)
-          stop_loop = 1;
-          break;
+    if (flags & GLINE_EXACT) {
+      gliterExactIpMask(gline, sgline, cidr, prefix, GlobalIpMaskPTree, node, stop_loop) {
+        if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
+            (flags & GLINE_LASTMOD && !gline->gl_lastmod))
+          continue;
         if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0) ||
             (!gline->gl_host && !host)) &&
             (ircd_strcmp(gline->gl_user, user) == 0)) {
           stop_loop = 1;
           break;
         }
-      } else {
-        /** No need to compare the gl->host or ip. gliterIpMask() returns only the list of glines
-         * that match the ip provided.
-        */
+      } gliterIpMaskEND(prefix);
+    } else {
+      gliterIpMask(gline, sgline, cidr, prefix, GlobalIpMaskPTree, node, stop_loop) {
+        if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
+            (flags & GLINE_LASTMOD && !gline->gl_lastmod))
+          continue;
+        /** No need to compare the gl->host or ip. gliterIpMask() returns only
+         *  the list of glines that match the ip provided.
+         */
         if (match(user, gline->gl_user) == 0) {
           stop_loop = 1;
           break;
         }
-      }
-    } gliterIpMaskEND(prefix);
+      } gliterIpMaskEND(prefix);
+    }
   }
 
   if (!gline) {
