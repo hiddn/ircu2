@@ -55,7 +55,7 @@ RPATH = ${DPATH}/remote.motd
 
 CC = @CC@
 CFLAGS = @CFLAGS@
-CPPFLAGS = -I. -I.. -I${top_srcdir}/include @CPPFLAGS@
+CPPFLAGS = -DIRCU2_BUILD -I. -I.. -I${top_srcdir}/include @CPPFLAGS@
 LDFLAGS = @LDFLAGS@
 LIBS = @LIBS@
 
@@ -83,6 +83,8 @@ UMKPASSWD_SRC = ${CRYPTO_SRC} \
 	ircd_string.c \
 	memdebug.c \
 	umkpasswd.c
+
+CIDR_LOOKUPS_SRC = cidr_lookups.c
 
 IRCD_SRC = \
 	IPcheck.c \
@@ -216,7 +218,7 @@ IRCD_SRC = \
 	whowas.c \
 	y.tab.c
 
-SRC = ${IRCD_SRC} ${ENGINE_C} ${CRYPTO_SRC}
+SRC = ${IRCD_SRC} ${ENGINE_C} ${CRYPTO_SRC} ${CIDR_LOOKUPS_SRC}
 
 OBJS = ${SRC:%.c=%.o}
 
@@ -373,6 +375,8 @@ channel.o: channel.c ../config.h ../include/channel.h \
  ../include/client.h ../include/s_debug.h ../include/s_misc.h \
  ../include/s_user.h ../include/send.h ../include/struct.h \
  ../include/sys.h ../include/whowas.h
+cidr_lookups.o: cidr_lookups.c ../include/cidr_lookups.h ../include/res.h \
+ ../include/ircd_chattr.h ../include/ircd_string.h ../include/
 class.o: class.c ../config.h ../include/class.h ../include/client.h \
  ../include/ircd_defs.h ../include/dbuf.h ../include/msgq.h \
  ../include/ircd_events.h ../include/ircd_handler.h ../include/res.h \
@@ -406,6 +410,7 @@ destruct_event.o: destruct_event.c ../config.h ../include/channel.h \
  ../include/msg.h ../include/ircd_handler.h
 fileio.o: fileio.c ../config.h ../include/fileio.h \
  ../include/ircd_alloc.h ../include/ircd_log.h
+cidr_lookups.o: cidr_lookups.c ../include/cidr_lookups.h
 gline.o: gline.c ../config.h ../include/gline.h ../include/res.h \
  ../include/channel.h ../include/ircd_defs.h ../include/client.h \
  ../include/dbuf.h ../include/msgq.h ../include/ircd_events.h \
@@ -416,7 +421,7 @@ gline.o: gline.c ../config.h ../include/gline.h ../include/res.h \
  ../include/numeric.h ../include/s_bsd.h ../include/s_debug.h \
  ../include/s_misc.h ../include/s_stats.h ../include/send.h \
  ../include/struct.h ../include/sys.h ../include/msg.h \
- ../include/numnicks.h
+ ../include/numnicks.h ../include/cidr_lookups.h
 hash.o: hash.c ../config.h ../include/hash.h ../include/client.h \
  ../include/ircd_defs.h ../include/dbuf.h ../include/msgq.h \
  ../include/ircd_events.h ../include/ircd_handler.h ../include/res.h \
