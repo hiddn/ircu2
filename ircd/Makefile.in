@@ -410,7 +410,6 @@ destruct_event.o: destruct_event.c ../config.h ../include/channel.h \
  ../include/msg.h ../include/ircd_handler.h
 fileio.o: fileio.c ../config.h ../include/fileio.h \
  ../include/ircd_alloc.h ../include/ircd_log.h
-cidr_lookups.o: cidr_lookups.c ../include/cidr_lookups.h
 gline.o: gline.c ../config.h ../include/gline.h ../include/res.h \
  ../include/channel.h ../include/ircd_defs.h ../include/client.h \
  ../include/dbuf.h ../include/msgq.h ../include/ircd_events.h \
