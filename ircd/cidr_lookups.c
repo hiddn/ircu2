@@ -323,9 +323,6 @@ unsigned short _cidr_get_bit(const struct irc_in_addr *ip, const unsigned int bi
     unsigned int quot = (127 - bit_index) / 16;
 	unsigned int rem = (127 - bit_index) % 16;
     unsigned short t = -1;
-	if (bit_index == 0) {
-        quot--;
-    }
     unsigned short ip16 = ntohs(ip->in6_16[7-quot]);
     //DEBUG("\t\t\t\t [%3u] ip->in6_16[7-%u] = %-5u", bit_index, quot, ip16);
     ip16 &= (1 << (rem)) & t;
