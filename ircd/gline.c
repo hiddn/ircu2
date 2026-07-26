@@ -180,6 +180,27 @@ canon_userhost(char *userhost, char **user_p, char **host_p, char *def_user)
   }
 }
 
+/** Check whether an ip mask can only match a single address family.
+ * Masks that are not IPv4-specific but whose prefix covers the start
+ * of the IPv4-mapped ::ffff:0:0 range (e.g. host "*" parsing to ::/0,
+ * or ::/16) match both IPv4 and IPv6 clients, so they cannot be
+ * stored in a per-family CIDR tree.
+ * @param[in] mask Parsed address mask.
+ * @param[in] bits Number of significant bits in \a mask.
+ * @return Non-zero if the mask can match only one address family.
+ */
+static int
+ipmask_is_single_family(const struct irc_in_addr *mask, unsigned char bits)
+{
+  struct irc_in_addr ipv4base;
+
+  if (irc_in_addr_is_ipv4(mask))
+    return 1;
+  memset(&ipv4base, 0, sizeof(ipv4base));
+  ipv4base.in6_16[5] = htons(65535);
+  return !ipmask_check(&ipv4base, mask, bits);
+}
+
 /** Create a Gline structure.
  * @param[in] user User part of mask.
  * @param[in] host Host part of mask (NULL if not applicable).
@@ -222,10 +243,17 @@ make_gline(char *user, char *host, char *reason, time_t expire, time_t lastmod,
 
     if (*user != '$' && ipmask_parse(host, &gline->gl_addr, &gline->gl_bits)) {
       gline->gl_flags |= GLINE_IPMASK;
-      if (!GlobalIpMaskPTree)
-        GlobalIpMaskPTree = cidr_new_tree();
       cidr = ircd_ntocidrmask(&gline->gl_addr, gline->gl_bits);
       Debug((DEBUG_DEBUG, "make_gline(): cidr = %s, gline->gl_bits = %u", cidr, gline->gl_bits));
+    }
+
+    /* Family-ambiguous masks stay on the linear list, where matching
+     * uses ipmask_check() and is family-blind; the CIDR tree can only
+     * answer per-family lookups. */
+    if (GlineIsIpMask(gline) &&
+        ipmask_is_single_family(&gline->gl_addr, gline->gl_bits)) {
+      if (!GlobalIpMaskPTree)
+        GlobalIpMaskPTree = cidr_new_tree();
       node = _cidr_find_exact_node(GlobalIpMaskPTree, &gline->gl_addr, gline->gl_bits);
       if (!node)
         node = cidr_add_node(GlobalIpMaskPTree, &gline->gl_addr, gline->gl_bits, NULL);
@@ -286,9 +314,6 @@ do_gline(struct Client *cptr, struct Client *sptr, struct Gline *gline)
           continue;
 
         if (GlineIsIpMask(gline)) {
-          /* Only apply ipmask_check() if both addresses are the same family. */
-          if (irc_in_addr_is_ipv4(&cli_ip(acptr)) != irc_in_addr_is_ipv4(&gline->gl_addr))
-            continue;
           if (!ipmask_check(&cli_ip(acptr), &gline->gl_addr, gline->gl_bits))
             continue;
         }
@@ -1166,8 +1191,11 @@ gline_free(struct Gline *gline)
     gline->gl_next->gl_prev_p = gline->gl_prev_p;
 
   /* If this was the last G-line on its CIDR tree node, the node's data
-   * pointer just became NULL through gl_prev_p; remove the node. */
-  if (GlineIsIpMask(gline) && GlobalIpMaskPTree) {
+   * pointer just became NULL through gl_prev_p; remove the node.
+   * Family-ambiguous ip masks live on GlobalGlineList and have no
+   * tree node. */
+  if (GlineIsIpMask(gline) && GlobalIpMaskPTree &&
+      ipmask_is_single_family(&gline->gl_addr, gline->gl_bits)) {
     node = _cidr_find_exact_node_raw(GlobalIpMaskPTree, &gline->gl_addr,
                                      gline->gl_bits);
     if (node && !node->data)
