@@ -217,7 +217,6 @@ make_gline(char *user, char *host, char *reason, time_t expire, time_t lastmod,
   struct Gline *gline;
   struct Gline **gl_list;
   cidr_node *node = 0;
-  const char *cidr;
   assert(0 != expire);
 
   gline = (struct Gline *)MyMalloc(sizeof(struct Gline)); /* alloc memory */
@@ -243,8 +242,9 @@ make_gline(char *user, char *host, char *reason, time_t expire, time_t lastmod,
 
     if (*user != '$' && ipmask_parse(host, &gline->gl_addr, &gline->gl_bits)) {
       gline->gl_flags |= GLINE_IPMASK;
-      cidr = ircd_ntocidrmask(&gline->gl_addr, gline->gl_bits);
-      Debug((DEBUG_DEBUG, "make_gline(): cidr = %s, gline->gl_bits = %u", cidr, gline->gl_bits));
+      Debug((DEBUG_DEBUG, "make_gline(): cidr = %s, gline->gl_bits = %u",
+             ircd_ntocidrmask(&gline->gl_addr, gline->gl_bits),
+             gline->gl_bits));
     }
 
     /* Family-ambiguous masks stay on the linear list, where matching

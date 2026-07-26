@@ -22,12 +22,12 @@
 
 #include <limits.h> /* for CHAR_BIT */
 #include <stdio.h> /* for printf, snprintf */
-#include <stdlib.h> /* for malloc, free, exit */
+#include <stdlib.h> /* for malloc, free */
 #include <assert.h> /* for assert */
 #include <stdarg.h> /* for va_list, va_start, va_end */
 #include <netinet/in.h> /* for ntohs */
 
-#include "../include/cidr_lookups.h"
+#include "cidr_lookups.h"
 
 #if !defined(IRCU2_BUILD)
 /* Do not include irc_stuff if this file is part of Undernet's ircu2 */
@@ -35,10 +35,10 @@
 #define cidr_malloc(size) malloc(size)
 #define cidr_free(ptr) free(ptr)
 #else
-#include "../include/ircd_defs.h" /* CIDR_LEN */
-#include "../include/res.h" /* CIDR_LEN */
-#include "../include/ircd_string.h"
-#include "../include/ircd_alloc.h" /* MyMalloc, MyFree */
+#include "ircd_defs.h" /* CIDR_LEN */
+#include "res.h" /* struct irc_in_addr */
+#include "ircd_string.h"
+#include "ircd_alloc.h" /* MyMalloc, MyFree */
 /* MyMalloc never returns NULL: allocation failure invokes the
  * out-of-memory handler. Allocations also take part in DEBUGMODE
  * memory accounting. */
@@ -48,7 +48,7 @@
 
 #define MAX_DEBUG_PAYLOAD 2048
 
-// local functions
+/* local functions */
 #if defined(CIDR_DEBUG_ENABLED)
 static void DEBUG(char const *format, ...) __attribute__((format(printf, 1, 2)));
 #else
@@ -130,7 +130,7 @@ cidr_node *cidr_add_node(const cidr_root_node *root_tree, const struct irc_in_ad
          */
         if (i == n->bits) {
             if (i == bits) {
-                // Update n itself.
+                /* Update n itself. */
                 n->data = data;
                 return n;
             }
@@ -192,7 +192,7 @@ cidr_node *_cidr_find_node(const cidr_root_node *root_tree, const struct irc_in_
         assert((i <= n->bits) && (i <= bits));
         if (i == n->bits) {
             if (i == bits) {
-                // Exact match found. Does it have data?
+                /* Exact match found. Does it have data? */
                 if (n->data || is_exact_match == 2)
                     return n;
                 if (is_exact_match)
@@ -202,7 +202,7 @@ cidr_node *_cidr_find_node(const cidr_root_node *root_tree, const struct irc_in_
             /* Walk to one of n's children, if it exists. */
             child_ptr = turn_right ? n->r : n->l;
             if (!child_ptr) {
-                // No exact match found
+                /* No exact match found */
                 if (is_exact_match)
                     return 0;
                 if (!n->data)
@@ -321,28 +321,6 @@ int cidr_rem_empty_node(cidr_node *node)
     return _cidr_collapse_node(node);
 }
 
-/** get_cidr_mask - get the CIDR mask of a node
- *  Be careful: it returns a pointer to a static buffer that gets overwritten on each call
- * @param[in] node Pointer to the node
- * @return The CIDR mask of the node
- */
-const char *get_cidr_mask(const cidr_node *node)
-{
-    return ircd_ntocidrmask(&node->ip, node->bits);
-}
-
-/** set_cidr_mask - copies the node's cidr mask to buffer buf
- * @param[in] node Pointer to the node
- * @param[out] buf Buffer to store the CIDR mask
- */
-void set_cidr_mask(cidr_node *node, char *buf)
-{
-    assert(node != 0);
-    const char *cidr = ircd_ntocidrmask(&node->ip, node->bits);
-    strncpy(buf, cidr, CIDR_LEN);
-    buf[CIDR_LEN] = 0;
-}
-
 /** _cidr_get_bit - get a specific bit from an IP address
  * @param[in] ip Pointer to the IP address
  * @param[in] bit_index Bit index - must be between 0 and 127
@@ -355,9 +333,7 @@ unsigned short _cidr_get_bit(const struct irc_in_addr *ip, const unsigned int bi
 	unsigned int rem = (127 - bit_index) % 16;
     unsigned short t = -1;
     unsigned short ip16 = ntohs(ip->in6_16[7-quot]);
-    //DEBUG("\t\t\t\t [%3u] ip->in6_16[7-%u] = %-5u", bit_index, quot, ip16);
     ip16 &= (1 << (rem)) & t;
-    //DEBUG(", %-5u\n", ip16);
     return ip16;
 }
 
@@ -418,20 +394,3 @@ cidr_node *cidr_get_closest_data_parent(const cidr_node *node)
     return 0;
 }
 
-/* This one is from Undernet's gnuworld, with a couple of modifications */
-void irc_in6_CIDRMinIP(struct irc_in_addr *ircip, unsigned int CClonesCIDR)
-{
-  if (CClonesCIDR == 128) {
-    return;
-  }
-  unsigned int quot = (127 - CClonesCIDR) / 16;
-	unsigned int rem = (127 - CClonesCIDR) % 16;
-	unsigned int i;
-
-  for (i = 0; i < quot; i++)
-		ircip->in6_16[7-i] = 0;
-	unsigned short ip16 = ntohs(ircip->in6_16[7-i]);
-	ip16 >>= rem+1;
-	ip16 <<= rem+1;
-	ircip->in6_16[7-i] = htons(ip16);
-}
