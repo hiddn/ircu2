@@ -1006,7 +1006,6 @@ gline_find(char *userhost, unsigned int flags)
   struct Gline *sgline;
   char *user, *host, *t_uh;
   cidr_node *node = 0;
-  cidr_node *pnode = 0;
   struct irc_in_addr mask;
   unsigned char bits;
 
@@ -1028,32 +1027,44 @@ gline_find(char *userhost, unsigned int flags)
   DupString(t_uh, userhost);
   canon_userhost(t_uh, &user, &host, "*");
 
-  if (*user != '$' && host && ipmask_parse(host, &mask, &bits)) {
+  if (*user != '$' && host) {
     if (flags & GLINE_EXACT) {
-      gliterExactIpMask(gline, sgline, &mask, bits, GlobalIpMaskPTree, node) {
-        if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
-            (flags & GLINE_LASTMOD && !gline->gl_lastmod))
-          continue;
-        if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0) ||
-            (!gline->gl_host && !host)) &&
-            (ircd_strcmp(gline->gl_user, user) == 0)) {
-          MyFree(t_uh);
-          return gline;
+      /* Exact matches are string comparisons, so the mask can only be
+       * found on the tree node with the same parsed address. */
+      if (ipmask_parse(host, &mask, &bits)) {
+        gliterExactIpMask(gline, sgline, &mask, bits, GlobalIpMaskPTree, node) {
+          if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
+              (flags & GLINE_LASTMOD && !gline->gl_lastmod))
+            continue;
+          if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0) ||
+              (!gline->gl_host && !host)) &&
+              (ircd_strcmp(gline->gl_user, user) == 0)) {
+            MyFree(t_uh);
+            return gline;
+          }
         }
       }
-    } else {
-      gliterIpMask(gline, sgline, &mask, bits, GlobalIpMaskPTree, node, pnode) {
-        if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
-            (flags & GLINE_LASTMOD && !gline->gl_lastmod))
-          continue;
-        /** No need to compare the gl->host or ip. gliterIpMask() returns only
-         *  the list of glines that match the ip provided.
-         */
-        if (match(user, gline->gl_user) == 0) {
-          MyFree(t_uh);
-          return gline;
+    } else if (GlobalIpMaskPTree) {
+      /* Non-exact searches keep the historical string-matching
+       * semantics: the pattern must cover the G-line's mask text
+       * (e.g. *@10.20.* finds *@10.20.30.0/24), which a covering
+       * tree walk cannot answer.  This is a full scan, but only
+       * oper-driven queries come through here; the per-connection
+       * fast path is gline_lookup().
+       */
+      CIDR_ITER(GlobalIpMaskPTree, node) {
+        gliter((struct Gline *) node->data, gline, sgline) {
+          if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
+              (flags & GLINE_LASTMOD && !gline->gl_lastmod))
+            continue;
+          if (((gline->gl_host && host && match(host, gline->gl_host) == 0) ||
+              (!gline->gl_host && !host)) &&
+              (match(user, gline->gl_user) == 0)) {
+            MyFree(t_uh);
+            return gline;
+          }
         }
-      }
+      } CIDR_ITER_END;
     }
   }
 
