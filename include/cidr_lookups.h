@@ -128,13 +128,21 @@ cidr_root_node *cidr_new_tree();
  */
 cidr_node *cidr_add_node(const cidr_root_node *root_tree, const struct irc_in_addr *ip, unsigned char nbits, void *data);
 
-/** _cidr_find_exact_node - find a node in the CIDR tree
+/** _cidr_find_exact_node - find a data-bearing node in the CIDR tree
  * @param[in] root_tree Pointer to the root of the CIDR tree
  * @param[in] ip IP address (mask) to look up
  * @param[in] nbits Length of CIDR prefix in \a ip
  * @return Pointer to the found CIDR node
  */
 #define _cidr_find_exact_node(TREE, IP, BITS) _cidr_find_node(TREE, IP, BITS, 1)
+
+/** _cidr_find_exact_node_raw - find a node in the CIDR tree, virtual or not
+ * @param[in] root_tree Pointer to the root of the CIDR tree
+ * @param[in] ip IP address (mask) to look up
+ * @param[in] nbits Length of CIDR prefix in \a ip
+ * @return Pointer to the found CIDR node, even when it holds no data
+ */
+#define _cidr_find_exact_node_raw(TREE, IP, BITS) _cidr_find_node(TREE, IP, BITS, 2)
 
 /** cidr_search_best - find a non-virtual node in the CIDR tree that covers the given CIDR string
  * @param[in] root_tree Pointer to the root of the CIDR tree
@@ -166,6 +174,14 @@ int cidr_rem_node_by_cidr(const cidr_root_node *root_tree, const struct irc_in_a
  * @return 1 if the node was removed, 0 otherwise
  */
 int cidr_rem_node(cidr_node *node);
+
+/** cidr_rem_empty_node - remove a node whose data pointer has been cleared
+ * Use this after unlinking the last entry from a node's data pointer;
+ * virtual (structural) nodes and family roots are left in place.
+ * @param[in] node Pointer to the node to be removed
+ * @return 1 if the node was freed, 0 otherwise
+ */
+int cidr_rem_empty_node(cidr_node *node);
 
 /** cidr_get_closest_data_parent - find the nearest ancestor that holds data
  * @param[in] node Pointer to the node whose ancestors are searched

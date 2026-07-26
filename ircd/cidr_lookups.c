@@ -163,7 +163,9 @@ cidr_node *cidr_add_node(const cidr_root_node *root_tree, const struct irc_in_ad
 /** _cidr_find_node - find a non-virtual node in the CIDR tree that covers the given CIDR string
  * @param[in] root_tree Pointer to the root of the CIDR tree
  * @param[in] cidr_string_format CIDR string format
- * @param[in] is_exact_match If 1, look for an exact cidr_string match. Otherwise, get the closest matching node that covers the given CIDR string
+ * @param[in] is_exact_match If 1, look for an exact cidr_string match; if 2,
+ * look for an exact match and return it even when it holds no data.
+ * Otherwise, get the closest matching node that covers the given CIDR string
  * @return Pointer to the found CIDR node, returns NULL if not found
  */
 cidr_node *_cidr_find_node(const cidr_root_node *root_tree, const struct irc_in_addr *ip, unsigned char bits, const unsigned short is_exact_match)
@@ -181,7 +183,7 @@ cidr_node *_cidr_find_node(const cidr_root_node *root_tree, const struct irc_in_
         if (i == n->bits) {
             if (i == bits) {
                 // Exact match found. Does it have data?
-                if (n->data)
+                if (n->data || is_exact_match == 2)
                     return n;
                 if (is_exact_match)
                     return 0;
@@ -221,6 +223,63 @@ int cidr_rem_node_by_cidr(const cidr_root_node *root_tree, const struct irc_in_a
     return cidr_rem_node(_cidr_find_exact_node(root_tree, ip, nbits));
 }
 
+/** _cidr_collapse_node - unlink and free a data-less node if possible
+ * The node is kept when it is a family root or still needed as a virtual
+ * node (two children). When removing a childless node leaves its virtual
+ * parent with a single child, the parent is spliced out and freed too.
+ * @param[in] node Pointer to the node to collapse; node->data must be NULL
+ * @return 1 if the node was freed, 0 if it was kept
+ */
+static int _cidr_collapse_node(cidr_node *node)
+{
+    cidr_node *parent_node;
+
+    assert(node != 0);
+    assert(node->data == 0);
+    if (!node->parent) {
+        /* It is a family root node. Keep it. */
+        return 0;
+    }
+    if (node->l && node->r) {
+        /* Node has two children. Keep it as a virtual node. */
+        return 0;
+    }
+    DEBUG("remove_node> %s\n", ircd_ntocidrmask(&node->ip, node->bits));
+    if (node->l || node->r) {
+        /* Node has one child. Splice the child into node's place. */
+        cidr_node *child_node = node->l ? node->l : node->r;
+        child_node->parent = node->parent;
+        if (node->parent->l == node)
+            node->parent->l = child_node;
+        else
+            node->parent->r = child_node;
+        free(node);
+        return 1;
+    }
+    /* Node has no children. Unlink it from its parent. */
+    if (node->parent->l == node)
+        node->parent->l = 0;
+    else
+        node->parent->r = 0;
+    /* If the parent is a non-root virtual node, it just went from two
+     * children to one; splice it out as well. */
+    parent_node = node->parent;
+    if (!parent_node->data && parent_node->parent) {
+        cidr_node *grandparent_node = parent_node->parent;
+        cidr_node *sibling_node = parent_node->l ? parent_node->l : parent_node->r;
+        assert(sibling_node != 0);
+        if (grandparent_node->l == parent_node)
+            grandparent_node->l = sibling_node;
+        else
+            grandparent_node->r = sibling_node;
+        sibling_node->parent = grandparent_node;
+        DEBUG("remove_node> %s\n", ircd_ntocidrmask(&parent_node->ip, parent_node->bits));
+        free(parent_node);
+    }
+    free(node);
+    return 1;
+}
+
 /** cidr_rem_node - remove a node from the CIDR tree
  * @param[in] node Pointer to the node to be removed
  * @return 1 if the node was removed, 0 otherwise
@@ -231,62 +290,25 @@ int cidr_rem_node(cidr_node *node)
         return 0;
     }
     if (!node->data) {
-        // Do not remove virtual nodes.
+        /* Do not remove virtual nodes. */
         return 0;
     }
-    if (!node->parent) {
-        // It is the root node. Make it virtual.
-        node->data = 0;
-        return 1;
-    }
-    else if (node->l && node->r) {
-        // Node has two children. Make it virtual.
-        node->data = 0;
-        return 1;
-    }
-    else if ((node->l && !node->r) || (!node->l && node->r)) {
-        // Node has only one children. Remove node and rearrange tree.
-        cidr_node *child_node = node->l ? node->l : node->r;
-        child_node->parent = node->parent;
-        if (node->parent->l == node) {
-            node->parent->l = node->l ? node->l : node->r;
-        }
-        else {
-            node->parent->r = node->r ? node->r : node->l;
-        }
-    }
-    else {
-        // Node has no children. Remove node.
-        if (node->parent->l == node) {
-            node->parent->l = 0;
-        }
-        else {
-            node->parent->r = 0;
-        }
-    }
-    DEBUG("remove_node> %s\n", ircd_ntocidrmask(&node->ip, node->bits));
-    // Check if parent node is virtual and has now only one children. If so, remove parent virtual node too.
-    cidr_node *parent_node = node->parent;
-    if (parent_node && !parent_node->data && (!parent_node->l || !parent_node->r)) {
-        cidr_node *grandparent_node = parent_node->parent;
-        cidr_node *sibling_node = parent_node->l ? parent_node->l : parent_node->r;
-        if (grandparent_node) {
-            // Only free parent node if it's not the root node.
-            if (grandparent_node->l == parent_node) {
-                grandparent_node->l = sibling_node;
-            } else {
-                grandparent_node->r = sibling_node;
-            }
-            if (sibling_node) {
-                sibling_node->parent = grandparent_node;
-            }
-            DEBUG("remove_node> %s\n", ircd_ntocidrmask(&node->ip, node->bits));
-            free(parent_node);
-            parent_node = grandparent_node;
-        }
-    }
-    free(node);
+    node->data = 0;
+    _cidr_collapse_node(node);
     return 1;
+}
+
+/** cidr_rem_empty_node - remove a node whose data has been cleared
+ * Use this after unlinking the last entry from a node's data pointer;
+ * virtual (structural) nodes and family roots are left in place.
+ * @param[in] node Pointer to the node to be removed
+ * @return 1 if the node was freed, 0 otherwise
+ */
+int cidr_rem_empty_node(cidr_node *node)
+{
+    if (!node || node->data)
+        return 0;
+    return _cidr_collapse_node(node);
 }
 
 /** get_cidr_mask - get the CIDR mask of a node

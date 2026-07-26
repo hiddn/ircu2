@@ -250,6 +250,57 @@ test_closest_data_parent(void)
     printf("Passed: closest data parent\n");
 }
 
+/** Emptied nodes (data set to NULL after the last entry is unlinked)
+ * must be removable, collapsing virtual parents as needed.
+ */
+static void
+test_empty_node_removal(void)
+{
+    cidr_root_node *tree = cidr_new_tree();
+    static int d1, d2;
+    struct irc_in_addr addr;
+    unsigned char bits;
+    cidr_node *node;
+
+    assert(tree != 0);
+    /* Two siblings force a virtual parent node. */
+    assert(add_mask(tree, "10.20.30.0/24", &d1) != 0);
+    assert(add_mask(tree, "10.20.31.0/24", &d2) != 0);
+
+    /* A node holding data must not be removable as "empty". */
+    parse_mask("10.20.30.0/24", &addr, &bits);
+    node = _cidr_find_exact_node(tree, &addr, bits);
+    assert(node != 0 && node->data == &d1);
+    assert(cidr_rem_empty_node(node) == 0);
+
+    /* The raw lookup finds nodes regardless of data; the plain exact
+     * lookup hides data-less nodes. */
+    assert(_cidr_find_exact_node_raw(tree, &addr, bits) == node);
+    node->data = 0; /* simulate the last entry being unlinked */
+    assert(_cidr_find_exact_node(tree, &addr, bits) == 0);
+    assert(_cidr_find_exact_node_raw(tree, &addr, bits) == node);
+
+    /* Now the node can be removed, and the sibling must survive with
+     * its virtual parent collapsed. */
+    assert(cidr_rem_empty_node(node) == 1);
+    assert(_cidr_find_exact_node_raw(tree, &addr, bits) == 0);
+    assert(search_best_data(tree, "10.20.30.5") == 0);
+    assert(search_best_data(tree, "10.20.31.5") == &d2);
+
+    /* Removing the last entry's node must leave an empty family root. */
+    parse_mask("10.20.31.0/24", &addr, &bits);
+    node = _cidr_find_exact_node(tree, &addr, bits);
+    assert(node != 0);
+    node->data = 0;
+    assert(cidr_rem_empty_node(node) == 1);
+    assert(search_best_data(tree, "10.20.31.5") == 0);
+
+    /* Root nodes must survive removal attempts. */
+    node = _cidr_find_exact_node_raw(tree, &addr, bits);
+    assert(node == 0);
+    printf("Passed: empty node removal\n");
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -259,6 +310,7 @@ main(int argc, char *argv[])
     test_iter_remove_during_iteration();
     test_iter_continue();
     test_closest_data_parent();
+    test_empty_node_removal();
     printf("Done.\n");
     return 0;
 }
