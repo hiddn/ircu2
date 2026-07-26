@@ -158,12 +158,107 @@ test_add_find(void)
     printf("Passed: add/find/remove\n");
 }
 
+/** Populate \a tree with a mix of chained and sibling entries.
+ * Layout forces virtual nodes and parent/child data chains.
+ */
+static void
+populate_tree(cidr_root_node *tree, int *d1, int *d2, int *d3, int *d4, int *d5)
+{
+    assert(add_mask(tree, "10.0.0.0/8", d1) != 0);
+    assert(add_mask(tree, "10.20.0.0/16", d2) != 0);
+    assert(add_mask(tree, "10.20.30.0/24", d3) != 0);
+    assert(add_mask(tree, "192.168.1.1", d4) != 0);
+    assert(add_mask(tree, "2001:db8::/32", d5) != 0);
+}
+
+/** The body of CIDR_ITER must be allowed to remove the current node. */
+static void
+test_iter_remove_during_iteration(void)
+{
+    cidr_root_node *tree = cidr_new_tree();
+    static int d1, d2, d3, d4, d5;
+    cidr_node *node;
+    unsigned int visited = 0, guard = 0;
+
+    assert(tree != 0);
+    populate_tree(tree, &d1, &d2, &d3, &d4, &d5);
+
+    CIDR_ITER(tree, node) {
+        if (++guard > 64)
+            break;
+        ++visited;
+        assert(cidr_rem_node(node) == 1);
+    } CIDR_ITER_END;
+
+    assert(guard <= 64);
+    assert(visited == 5);
+    assert(search_best_data(tree, "10.20.30.1") == 0);
+    assert(search_best_data(tree, "192.168.1.1") == 0);
+    assert(search_best_data(tree, "2001:db8::1") == 0);
+    printf("Passed: node removal during iteration\n");
+}
+
+/** continue must advance the iteration instead of looping forever. */
+static void
+test_iter_continue(void)
+{
+    cidr_root_node *tree = cidr_new_tree();
+    static int d1, d2, d3, d4, d5;
+    cidr_node *node;
+    unsigned int visited = 0, guard = 0;
+
+    assert(tree != 0);
+    populate_tree(tree, &d1, &d2, &d3, &d4, &d5);
+
+    CIDR_ITER(tree, node) {
+        if (++guard > 64)
+            break;
+        if (node->data == &d2)
+            continue;
+        ++visited;
+    } CIDR_ITER_END;
+
+    assert(guard <= 64);
+    assert(visited == 4);
+    printf("Passed: continue during iteration\n");
+}
+
+/** Walking up to the nearest ancestor holding data must skip
+ * virtual nodes and never visit unrelated branches.
+ */
+static void
+test_closest_data_parent(void)
+{
+    cidr_root_node *tree = cidr_new_tree();
+    static int d1, d2, d3, d4, d5;
+    struct irc_in_addr addr;
+    unsigned char bits;
+    cidr_node *node;
+
+    assert(tree != 0);
+    populate_tree(tree, &d1, &d2, &d3, &d4, &d5);
+
+    parse_mask("10.20.30.0/24", &addr, &bits);
+    node = _cidr_find_exact_node(tree, &addr, bits);
+    assert(node != 0 && node->data == &d3);
+    node = cidr_get_closest_data_parent(node);
+    assert(node != 0 && node->data == &d2);
+    node = cidr_get_closest_data_parent(node);
+    assert(node != 0 && node->data == &d1);
+    node = cidr_get_closest_data_parent(node);
+    assert(node == 0);
+    printf("Passed: closest data parent\n");
+}
+
 int
 main(int argc, char *argv[])
 {
     test_get_bit();
     test_bit0_divergence();
     test_add_find();
+    test_iter_remove_during_iteration();
+    test_iter_continue();
+    test_closest_data_parent();
     printf("Done.\n");
     return 0;
 }

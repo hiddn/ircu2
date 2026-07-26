@@ -48,7 +48,9 @@ typedef struct _cidr_root_node {
 } cidr_root_node;
 
 /** CIDR_ITER - iterate over all nodes in the CIDR tree.
- * Use this macro like if it were a loop with {} brackets. You can break using `break;` at any point.
+ * Use this macro like if it were a loop with {} brackets. You can break using
+ * `break;` or skip to the next node using `continue;` at any point. The loop
+ * body may remove the current node.
  * @param[in] root Pointer to the root of the CIDR tree
  * @param[in] node Pointer to the current node in the iteration
  */
@@ -59,36 +61,38 @@ typedef struct _cidr_root_node {
  * @param[in] node Pointer to the current node in the iteration
  * @param[in] show_virtual_nodes If 1, virtual nodes are shown in the iteration
  */
+/* The next node is computed BEFORE the loop body runs, so the body may
+ * safely remove the current node (nodes reachable from _next are never
+ * freed by removing the current node) and may use continue.
+ */
 #define _CIDR_ITER(root, node, show_virtual_nodes) \
 do {                                               \
     cidr_node *_stack[129];                        \
     cidr_node **_stack_ptr = _stack;               \
     cidr_root_node *_root = (root);                \
-    cidr_node *_node = _root->ipv4;                \
-    short ipv4_done = 0;                           \
-    while (((node) = _node)) {                     \
-        if (_node->data || (show_virtual_nodes))
-
-#define CIDR_ITER_END                              \
+    cidr_node *_node;                              \
+    cidr_node *_next;                              \
+    short _ipv4_done = 0;                          \
+    for (_node = _root->ipv4; ((node) = _node); _node = _next) { \
         if (_node->l) {                            \
             if (_node->r) {                        \
                 *_stack_ptr++ = _node->r;          \
             }                                      \
-            _node = _node->l;                      \
+            _next = _node->l;                      \
         }                                          \
         else if (_node->r)                         \
-            _node = _node->r;                      \
+            _next = _node->r;                      \
         else if (_stack_ptr != _stack)             \
-            _node = *--_stack_ptr;                 \
-        else {                                     \
-            if (!ipv4_done) {                      \
-                _node = _root->ipv6;               \
-                ipv4_done = 1;                     \
-            }                                      \
-            else {                                 \
-                _node = 0;                         \
-            }                                      \
+            _next = *--_stack_ptr;                 \
+        else if (!_ipv4_done) {                    \
+            _next = _root->ipv6;                   \
+            _ipv4_done = 1;                        \
         }                                          \
+        else                                       \
+            _next = 0;                             \
+        if (_node->data || (show_virtual_nodes))
+
+#define CIDR_ITER_END                              \
     }                                              \
 } while(0)
 
@@ -162,6 +166,12 @@ int cidr_rem_node_by_cidr(const cidr_root_node *root_tree, const struct irc_in_a
  * @return 1 if the node was removed, 0 otherwise
  */
 int cidr_rem_node(cidr_node *node);
+
+/** cidr_get_closest_data_parent - find the nearest ancestor that holds data
+ * @param[in] node Pointer to the node whose ancestors are searched
+ * @return Pointer to the closest non-virtual ancestor, or NULL
+ */
+cidr_node *cidr_get_closest_data_parent(const cidr_node *node);
 
 /** cidr_get_data - get data associated with a node in the CIDR tree
  * @param[in] root_tree Pointer to the root of the CIDR tree

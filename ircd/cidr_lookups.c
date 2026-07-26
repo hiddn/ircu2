@@ -47,7 +47,6 @@ static void DEBUG(char const *format, ...) __attribute__((format(printf, 1, 2)))
 # define DEBUG(...)
 #endif
 static cidr_node* _cidr_create_node(const struct irc_in_addr *ip, const unsigned char bits, void *data);
-static cidr_node* _get_closest_parent_node(const cidr_node *node);
 
 /** _cidr_bit_diff - find first mismatching bit
  * @param[in] node CIDR tree node to compare against
@@ -186,7 +185,7 @@ cidr_node *_cidr_find_node(const cidr_root_node *root_tree, const struct irc_in_
                     return n;
                 if (is_exact_match)
                     return 0;
-                return _get_closest_parent_node(n);
+                return cidr_get_closest_data_parent(n);
             }
             /* Walk to one of n's children, if it exists. */
             child_ptr = turn_right ? n->r : n->l;
@@ -195,13 +194,13 @@ cidr_node *_cidr_find_node(const cidr_root_node *root_tree, const struct irc_in_
                 if (is_exact_match)
                     return 0;
                 if (!n->data)
-                    return _get_closest_parent_node(n);
+                    return cidr_get_closest_data_parent(n);
                 return n;
             }
             n = child_ptr;
         } else { /* i < n->bits */
             if (!is_exact_match)
-                return _get_closest_parent_node(n);
+                return cidr_get_closest_data_parent(n);
             return 0;
         }
     }
@@ -373,7 +372,11 @@ static cidr_node *_cidr_create_node(const struct irc_in_addr *ip, const unsigned
     return node;
 }
 
-static cidr_node *_get_closest_parent_node(const cidr_node *node)
+/** cidr_get_closest_data_parent - find the nearest ancestor that holds data
+ * @param[in] node Pointer to the node whose ancestors are searched
+ * @return Pointer to the closest non-virtual ancestor, or NULL
+ */
+cidr_node *cidr_get_closest_data_parent(const cidr_node *node)
 {
     for (cidr_node *tmp_node = node->parent; tmp_node; tmp_node = tmp_node->parent) {
         if (!tmp_node->data) {

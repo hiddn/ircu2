@@ -117,18 +117,24 @@ struct Gline* BadChanGlineList = 0;
  * as a single struct G-line to be acted upon.
  * Note: `break;` instruction will not work as expected, because of nested loops inside this macro.
  *
+ * The next node in the upward walk is computed before the loop body runs,
+ * so the body may free the current node's G-lines (and thereby remove the
+ * node itself) without leaving the iteration on freed memory: removing a
+ * node can only splice out the node itself and virtual ancestors, never a
+ * data-bearing ancestor.
+ *
  * @param[in] gl Name of a struct Gline pointer variable that will be made to point to the G-lines in sequence.
  * @param[in] next Name of a scratch struct Gline pointer variable.
  * @param[in] ip irc_in_addr struct
  * @param[in] nbits cidr bits
  * @param[in] tree pointer to cidr_root_node.
  * @param[in] node pointer to cidr_node.
+ * @param[in] parent Name of a scratch cidr_node pointer variable.
  */
-#define gliterIpMask(gl, next, ip, nbits, tree, node)         \
-  if ((tree))                                                 \
-  for ((node) = cidr_search_best((tree), (ip), (nbits));      \
-        (node);                                               \
-        (node) = (node)->parent)                              \
+#define gliterIpMask(gl, next, ip, nbits, tree, node, parent)               \
+  for ((node) = (tree) ? cidr_search_best((tree), (ip), (nbits)) : 0;      \
+        (node) && (((parent) = cidr_get_closest_data_parent((node))) || 1); \
+        (node) = (parent))                                                  \
     gliter((struct Gline *)(node)->data, (gl), (next), (tree), (node))
 
 /** Iterate through \a list of ipmask-based G-lines that match exactly \a ip.
@@ -145,9 +151,9 @@ struct Gline* BadChanGlineList = 0;
  * @param[in] node pointer to cidr_node.
  */
 
-#define gliterExactIpMask(gl, next, ip, nbits, tree, node)    \
-  if ((tree) &&                                               \
-      ((node) = _cidr_find_exact_node((tree), (ip), (nbits))))\
+#define gliterExactIpMask(gl, next, ip, nbits, tree, node)              \
+  for ((node) = (tree) ? _cidr_find_exact_node((tree), (ip), (nbits)) : 0; \
+        (node); (node) = 0)                                             \
     gliter((struct Gline *)(node)->data, (gl), (next), (tree), (node))
 
 /** Find canonical user and host for a string.
@@ -1007,6 +1013,7 @@ gline_find(char *userhost, unsigned int flags)
   struct Gline *sgline;
   char *user, *host, *t_uh;
   cidr_node *node = 0;
+  cidr_node *pnode = 0;
   struct irc_in_addr mask;
   unsigned char bits;
 
@@ -1042,7 +1049,7 @@ gline_find(char *userhost, unsigned int flags)
         }
       }
     } else {
-      gliterIpMask(gline, sgline, &mask, bits, GlobalIpMaskPTree, node) {
+      gliterIpMask(gline, sgline, &mask, bits, GlobalIpMaskPTree, node, pnode) {
         if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
             (flags & GLINE_LASTMOD && !gline->gl_lastmod))
           continue;
@@ -1091,8 +1098,9 @@ gline_lookup(struct Client *cptr, unsigned int flags)
   struct Gline *gline;
   struct Gline *sgline;
   cidr_node *node = 0;
+  cidr_node *pnode = 0;
 
-  gliterIpMask(gline, sgline, &cli_ip(cptr), 128, GlobalIpMaskPTree, node) {
+  gliterIpMask(gline, sgline, &cli_ip(cptr), 128, GlobalIpMaskPTree, node, pnode) {
     if ((flags & GLINE_GLOBAL && gline->gl_flags & GLINE_LOCAL) ||
         (flags & GLINE_LASTMOD && !gline->gl_lastmod))
       continue;
