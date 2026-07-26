@@ -301,6 +301,42 @@ test_empty_node_removal(void)
     printf("Passed: empty node removal\n");
 }
 
+/** _CIDR_ITER with show_virtual_nodes=1 must visit every allocated
+ * node -- family roots, virtual split nodes and data nodes -- so that
+ * memory accounting can count them all; CIDR_ITER must keep hiding
+ * the data-less ones.
+ */
+static void
+test_iter_virtual_nodes(void)
+{
+    cidr_root_node *tree = cidr_new_tree();
+    static int d1, d2, d3, d4, d5, d6;
+    cidr_node *node;
+    unsigned int data_nodes = 0, all_nodes = 0, virtual_nodes = 0;
+
+    assert(tree != 0);
+    populate_tree(tree, &d1, &d2, &d3, &d4, &d5);
+    /* Sibling of 10.20.30.0/24 below 10.20.0.0/16; forces a virtual
+     * split node between them. */
+    assert(add_mask(tree, "10.20.40.0/24", &d6) != 0);
+
+    CIDR_ITER(tree, node) {
+        ++data_nodes;
+    } CIDR_ITER_END;
+
+    _CIDR_ITER(tree, node, 1) {
+        ++all_nodes;
+        if (!node->data)
+            ++virtual_nodes;
+    } CIDR_ITER_END;
+
+    assert(data_nodes == 6);
+    /* 6 data nodes + 2 family roots + 1 virtual split node. */
+    assert(all_nodes == 9);
+    assert(virtual_nodes == 3);
+    printf("Passed: virtual node iteration\n");
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -311,6 +347,7 @@ main(int argc, char *argv[])
     test_iter_continue();
     test_closest_data_parent();
     test_empty_node_removal();
+    test_iter_virtual_nodes();
     printf("Done.\n");
     return 0;
 }

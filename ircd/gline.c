@@ -1421,7 +1421,9 @@ gline_memory_count(size_t *gl_size)
   cidr_node *node = 0;
 
   if (GlobalIpMaskPTree) {
-    CIDR_ITER(GlobalIpMaskPTree, node) {
+    /* Iterate virtual nodes too: family roots and split nodes take
+     * memory just the same. */
+    _CIDR_ITER(GlobalIpMaskPTree, node, 1) {
       *gl_size += sizeof(cidr_node);
       if (!node->data)
         continue;
