@@ -96,6 +96,23 @@ do {                                               \
     }                                              \
 } while(0)
 
+/** CIDR_SEARCH_ALL_MATCHES - iterate over all nodes in the CIDR tree that match/cover \a ip.
+ * Use this macro like if it were a loop with {} brackets. You can break using `break;` at any point.
+ * @param[in] root Pointer to the root of the CIDR tree
+ * @param[in] node Pointer to the current node in the iteration
+ * @param[in] ip ip address to search for
+ */
+#define CIDR_SEARCH_ALL_MATCHES(root, node, ip) \
+do { \
+    cidr_node *_node = cidr_search_best(root, (ip), 128); \
+    while ((node = _node)) { \
+        if (_node->data) \
+
+#define CIDR_SEARCH_ALL_MATCHES_END \
+        _node = _node->parent; \
+    } \
+} while(0)
+
 /** cidr_new_tree - create a new CIDR tree
  * @return Pointer to the created CIDR tree root node
  */
@@ -179,6 +196,19 @@ cidr_node *cidr_get_closest_data_parent(const cidr_node *node);
  */
 void *cidr_get_data(const cidr_root_node *root_tree, const struct irc_in_addr *ip, unsigned char nbits);
 
+/** get_cidr_mask - get the CIDR mask of a node
+ *  Be careful: it returns a pointer to a static buffer that gets overwritten on each call
+ * @param[in] node Pointer to the node
+ * @return The CIDR mask of the node
+ */
+const char *get_cidr_mask(const cidr_node *node);
+
+/** set_cidr_mask - copies the node's cidr mask to buffer buf
+ * @param[in] node Pointer to the node
+ * @param[out] buf Buffer to store the CIDR mask
+ */
+void set_cidr_mask(cidr_node *node, char *buf);
+
 /** _cidr_get_bit - get a specific bit from an IP address
  * @param[in] ip Pointer to the IP address
  * @param[in] bit_index Bit index - must be between 0 and 127
@@ -187,5 +217,7 @@ void *cidr_get_data(const cidr_root_node *root_tree, const struct irc_in_addr *i
 unsigned short _cidr_get_bit(const struct irc_in_addr *ip, const unsigned int bit_index);
 
 
+/* This one is from Undernet's gnuworld, with a couple of modifications */
+void irc_in6_CIDRMinIP(struct irc_in_addr *ircip, unsigned int CClonesCIDR);
 
 #endif /* __CIDR_LOOKUPS_H */

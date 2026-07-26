@@ -321,6 +321,28 @@ int cidr_rem_empty_node(cidr_node *node)
     return _cidr_collapse_node(node);
 }
 
+/** get_cidr_mask - get the CIDR mask of a node
+ *  Be careful: it returns a pointer to a static buffer that gets overwritten on each call
+ * @param[in] node Pointer to the node
+ * @return The CIDR mask of the node
+ */
+const char *get_cidr_mask(const cidr_node *node)
+{
+    return ircd_ntocidrmask(&node->ip, node->bits);
+}
+
+/** set_cidr_mask - copies the node's cidr mask to buffer buf
+ * @param[in] node Pointer to the node
+ * @param[out] buf Buffer to store the CIDR mask
+ */
+void set_cidr_mask(cidr_node *node, char *buf)
+{
+    assert(node != 0);
+    const char *cidr = ircd_ntocidrmask(&node->ip, node->bits);
+    strncpy(buf, cidr, CIDR_LEN);
+    buf[CIDR_LEN] = 0;
+}
+
 /** _cidr_get_bit - get a specific bit from an IP address
  * @param[in] ip Pointer to the IP address
  * @param[in] bit_index Bit index - must be between 0 and 127
@@ -394,3 +416,20 @@ cidr_node *cidr_get_closest_data_parent(const cidr_node *node)
     return 0;
 }
 
+/* This one is from Undernet's gnuworld, with a couple of modifications */
+void irc_in6_CIDRMinIP(struct irc_in_addr *ircip, unsigned int CClonesCIDR)
+{
+  if (CClonesCIDR == 128) {
+    return;
+  }
+  unsigned int quot = (127 - CClonesCIDR) / 16;
+	unsigned int rem = (127 - CClonesCIDR) % 16;
+	unsigned int i;
+
+  for (i = 0; i < quot; i++)
+		ircip->in6_16[7-i] = 0;
+	unsigned short ip16 = ntohs(ircip->in6_16[7-i]);
+	ip16 >>= rem+1;
+	ip16 <<= rem+1;
+	ircip->in6_16[7-i] = htons(ip16);
+}
