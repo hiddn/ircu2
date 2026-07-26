@@ -32,10 +32,18 @@
 #if !defined(IRCU2_BUILD)
 /* Do not include irc_stuff if this file is part of Undernet's ircu2 */
 #include "../include/irc_stuff.h" /* for irc_in_addr, ircd_ntocidrmask, ipmask_parse, irc_in_addr_is_ipv4, irc_in_addr_cmp */
+#define cidr_malloc(size) malloc(size)
+#define cidr_free(ptr) free(ptr)
 #else
 #include "../include/ircd_defs.h" /* CIDR_LEN */
 #include "../include/res.h" /* CIDR_LEN */
 #include "../include/ircd_string.h"
+#include "../include/ircd_alloc.h" /* MyMalloc, MyFree */
+/* MyMalloc never returns NULL: allocation failure invokes the
+ * out-of-memory handler. Allocations also take part in DEBUGMODE
+ * memory accounting. */
+#define cidr_malloc(size) MyMalloc(size)
+#define cidr_free(ptr) MyFree(ptr)
 #endif /* IRCU2_BUILD */
 
 #define MAX_DEBUG_PAYLOAD 2048
@@ -85,14 +93,16 @@ cidr_root_node *cidr_new_tree()
 {
     struct irc_in_addr ip;
     unsigned char bits;
-    cidr_root_node *root = malloc(sizeof(cidr_root_node));
+    int parsed;
+    cidr_root_node *root = cidr_malloc(sizeof(cidr_root_node));
     assert(root != 0);
-    if (!ipmask_parse("0.0.0.0/0", &ip, &bits))
-        exit(-1);
+    parsed = ipmask_parse("0.0.0.0/0", &ip, &bits);
+    assert(parsed != 0);
     root->ipv4 = _cidr_create_node(&ip, bits, 0);
-    if (!ipmask_parse("0::/0", &ip, &bits))
-        exit(-1);
+    parsed = ipmask_parse("0::/0", &ip, &bits);
+    assert(parsed != 0);
     root->ipv6 = _cidr_create_node(&ip, bits, 0);
+    (void)parsed;
     return root;
 }
 
@@ -253,7 +263,7 @@ static int _cidr_collapse_node(cidr_node *node)
             node->parent->l = child_node;
         else
             node->parent->r = child_node;
-        free(node);
+        cidr_free(node);
         return 1;
     }
     /* Node has no children. Unlink it from its parent. */
@@ -274,9 +284,9 @@ static int _cidr_collapse_node(cidr_node *node)
             grandparent_node->r = sibling_node;
         sibling_node->parent = grandparent_node;
         DEBUG("remove_node> %s\n", ircd_ntocidrmask(&parent_node->ip, parent_node->bits));
-        free(parent_node);
+        cidr_free(parent_node);
     }
-    free(node);
+    cidr_free(node);
     return 1;
 }
 
@@ -382,13 +392,12 @@ static void DEBUG (char const *format, ...)
  */
 static cidr_node *_cidr_create_node(const struct irc_in_addr *ip, const unsigned char bits, void *data)
 {
-    cidr_node *node = 0;
+    cidr_node *node;
     assert(ip != 0);
-    node = malloc(sizeof(cidr_node));
-    memset(node, 0, sizeof(cidr_node));
+    node = cidr_malloc(sizeof(cidr_node));
     assert(node != 0);
-    if (ip != 0)
-        memcpy(&node->ip, ip, sizeof(node->ip));
+    memset(node, 0, sizeof(cidr_node));
+    memcpy(&node->ip, ip, sizeof(node->ip));
     node->bits = bits;
     node->data = data;
     return node;

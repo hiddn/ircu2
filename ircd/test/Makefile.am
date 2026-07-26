@@ -7,7 +7,7 @@ TESTS = $(check_PROGRAMS)
 
 cidr_lookups_t_CPPFLAGS = $(AM_CPPFLAGS) -DIRCU2_BUILD
 cidr_lookups_t_SOURCES = cidr_lookups_t.c test_stub.c
-cidr_lookups_t_LDADD = ../cidr_lookups.o ../ircd_string.o
+cidr_lookups_t_LDADD = ../cidr_lookups.o ../ircd_alloc.o ../ircd_string.o
 
 ircd_chattr_t_SOURCES = ircd_chattr_t.c test_stub.c
 ircd_chattr_t_LDADD = ../ircd_string.o
