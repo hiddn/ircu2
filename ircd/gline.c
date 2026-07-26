@@ -1221,8 +1221,6 @@ gline_burst(struct Client *cptr)
 
   if (GlobalIpMaskPTree) {
     CIDR_ITER(GlobalIpMaskPTree, tnode) {
-      if (!tnode->data)
-        continue;
       gliter((struct Gline *) tnode->data, gline, sgline) {
         if (!GlineIsLocal(gline) && gline->gl_lastmod)
           sendcmdto_one(&me, CMD_GLINE, cptr, "* %c%s%s%s %Tu %Tu %Tu :%s",
@@ -1306,8 +1304,6 @@ gline_list(struct Client *sptr, char *userhost)
   } else {
     if (GlobalIpMaskPTree) {
       CIDR_ITER(GlobalIpMaskPTree, tnode) {
-        if (!tnode->data)
-          continue;
         gliter((struct Gline *) tnode->data, gline, sgline) {
           send_reply(sptr, RPL_GLIST, gline->gl_user,
           gline->gl_host ? "@" : "",
@@ -1365,8 +1361,6 @@ gline_stats(struct Client *sptr, const struct StatDesc *sd,
 
   if (GlobalIpMaskPTree) {
     CIDR_ITER(GlobalIpMaskPTree, tnode) {
-      if (!tnode->data)
-        continue;
       gliter((struct Gline *) tnode->data, gline, sgline) {
         if (param) {
           if (gline->gl_host)
