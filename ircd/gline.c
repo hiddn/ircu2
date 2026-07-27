@@ -1010,6 +1010,9 @@ gline_destroy(struct Client *cptr, struct Client *sptr, struct Gline *gline)
 }
 
 /** Find a G-line for a particular mask, guided by certain flags.
+ * This always does an exact (string comparison) match of the mask;
+ * callers wanting every G-line that matches a possibly-wildcarded query
+ * should use gline_list() instead, which enumerates all matches.
  * Certain bits in \a flags are interpreted specially:
  * <dl>
  * <dt>GLINE_ANY</dt><dd>Search both BadChans and user G-lines.</dd>
@@ -1017,11 +1020,10 @@ gline_destroy(struct Client *cptr, struct Client *sptr, struct Gline *gline)
  * <dt>GLINE_GLOBAL</dt><dd>Only match global G-lines.</dd>
  * <dt>GLINE_LOCAL</dt><dd>Only match local G-lines.</dd>
  * <dt>GLINE_LASTMOD</dt><dd>Only match G-lines with a last modification time.</dd>
- * <dt>GLINE_EXACT</dt><dd>Require an exact match of G-line mask.</dd>
- * <dt>anything else</dt><dd>Search user G-lines.</dd>
+ * <dt>GLINE_EXACT</dt><dd>Required; exact match of G-line mask.</dd>
  * </dl>
  * @param[in] userhost Mask to search for.
- * @param[in] flags Bitwise combination of GLINE_* flags.
+ * @param[in] flags Bitwise combination of GLINE_* flags; must include GLINE_EXACT.
  * @return First matching G-line, or NULL if none are found.
  */
 struct Gline *
@@ -1034,13 +1036,14 @@ gline_find(char *userhost, unsigned int flags)
   struct irc_in_addr mask;
   unsigned char bits;
 
+  assert(flags & GLINE_EXACT);
+
   if (flags & (GLINE_BADCHAN | GLINE_ANY)) {
     gliter(BadChanGlineList, gline, sgline) {
       if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
           (flags & GLINE_LASTMOD && !gline->gl_lastmod))
         continue;
-      else if ((flags & GLINE_EXACT ? ircd_strcmp(gline->gl_user, userhost) :
-                match(userhost, gline->gl_user)) == 0)
+      else if (ircd_strcmp(gline->gl_user, userhost) == 0)
         return gline;
     }
   }
@@ -1052,44 +1055,19 @@ gline_find(char *userhost, unsigned int flags)
   DupString(t_uh, userhost);
   canon_userhost(t_uh, &user, &host, "*");
 
-  if (*user != '$' && host) {
-    if (flags & GLINE_EXACT) {
-      /* Exact matches are string comparisons, so the mask can only be
-       * found on the tree node with the same parsed address. */
-      if (ipmask_parse(host, &mask, &bits)) {
-        gliterExactIpMask(gline, sgline, &mask, bits, GlobalIpMaskPTree, node) {
-          if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
-              (flags & GLINE_LASTMOD && !gline->gl_lastmod))
-            continue;
-          if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0) ||
-              (!gline->gl_host && !host)) &&
-              (ircd_strcmp(gline->gl_user, user) == 0)) {
-            MyFree(t_uh);
-            return gline;
-          }
-        }
+  /* Exact matches are string comparisons, so the mask can only be
+   * found on the tree node with the same parsed address. */
+  if (*user != '$' && host && ipmask_parse(host, &mask, &bits)) {
+    gliterExactIpMask(gline, sgline, &mask, bits, GlobalIpMaskPTree, node) {
+      if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
+          (flags & GLINE_LASTMOD && !gline->gl_lastmod))
+        continue;
+      if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0) ||
+          (!gline->gl_host && !host)) &&
+          (ircd_strcmp(gline->gl_user, user) == 0)) {
+        MyFree(t_uh);
+        return gline;
       }
-    } else if (GlobalIpMaskPTree) {
-      /* Non-exact searches keep the historical string-matching
-       * semantics: the pattern must cover the G-line's mask text
-       * (e.g. *@10.20.* finds *@10.20.30.0/24), which a covering
-       * tree walk cannot answer.  This is a full scan, but only
-       * oper-driven queries come through here; the per-connection
-       * fast path is gline_lookup().
-       */
-      CIDR_ITER(GlobalIpMaskPTree, node) {
-        gliter((struct Gline *) node->data, gline, sgline) {
-          if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
-              (flags & GLINE_LASTMOD && !gline->gl_lastmod))
-            continue;
-          if (((gline->gl_host && host && match(host, gline->gl_host) == 0) ||
-              (!gline->gl_host && !host)) &&
-              (match(user, gline->gl_user) == 0)) {
-            MyFree(t_uh);
-            return gline;
-          }
-        }
-      } CIDR_ITER_END;
     }
   }
 
@@ -1097,17 +1075,10 @@ gline_find(char *userhost, unsigned int flags)
     if ((flags & (GlineIsLocal(gline) ? GLINE_GLOBAL : GLINE_LOCAL)) ||
         (flags & GLINE_LASTMOD && !gline->gl_lastmod))
       continue;
-    else if (flags & GLINE_EXACT) {
-      if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0) ||
-          (!gline->gl_host && !host)) &&
-          (ircd_strcmp(gline->gl_user, user) == 0))
-        break;
-    } else {
-      if (((gline->gl_host && host && match(host, gline->gl_host) == 0) ||
-          (!gline->gl_host && !host)) &&
-          (match(user, gline->gl_user) == 0))
-        break;
-    }
+    else if (((gline->gl_host && host && ircd_strcmp(gline->gl_host, host) == 0) ||
+        (!gline->gl_host && !host)) &&
+        (ircd_strcmp(gline->gl_user, user) == 0))
+      break;
   }
 
   MyFree(t_uh);
@@ -1273,72 +1244,171 @@ gline_resend(struct Client *cptr, struct Gline *gline)
   return 0;
 }
 
+/** Send a single G-line's RPL_GLIST line to \a sptr.
+ * @param[in] sptr Client to send the reply to.
+ * @param[in] gline G-line to describe.
+ */
+static void
+gline_list_send(struct Client *sptr, struct Gline *gline)
+{
+  send_reply(sptr, RPL_GLIST, gline->gl_user,
+             gline->gl_host ? "@" : "",
+             gline->gl_host ? gline->gl_host : "",
+             gline->gl_expire, gline->gl_lastmod,
+             gline->gl_lifetime,
+             GlineIsLocal(gline) ? cli_name(&me) : "*",
+             gline->gl_state == GLOCAL_ACTIVATED ? ">" :
+             (gline->gl_state == GLOCAL_DEACTIVATED ? "<" : ""),
+             GlineIsRemActive(gline) ? '+' : '-', gline->gl_reason);
+}
+
 /** Display one or all G-lines to a user.
- * If \a userhost is not NULL, only send the first matching G-line.
- * Otherwise send the whole list.
+ *
+ * If \a userhost is not NULL, every G-line matching it is sent (not just
+ * the first). A mask that parses as an ip/cidr is matched numerically:
+ * the CIDR tree is walked from the deepest covering node up through
+ * every ancestor that holds data -- the same containment walk
+ * gline_lookup() uses for a real connection -- plus any
+ * family-ambiguous ip-mask G-lines, which never enter the tree but are
+ * still checked numerically against GlobalGlineList. This is safe for
+ * non-opers too, since it is driven by the concrete ip/cidr the caller
+ * supplied rather than a wildcard scan.
+ *
+ * A mask that does not parse as an ip/cidr only gets the historical
+ * wildcard-pattern-covers-mask-text search (e.g. *@10.20.* finding
+ * *@10.20.30.0/24, or #* finding a wildcarded BadChan) for an oper
+ * (\a is_oper). A non-oper is restricted to an exact host/BadChan-mask
+ * match -- wildcards are only honored on the user@ part -- so G-lines
+ * cannot be enumerated by pattern fishing.
+ *
+ * Otherwise (\a userhost NULL) send the whole list.
  * @param[in] sptr User asking for G-line list.
  * @param[in] userhost G-line mask to search for (or NULL).
+ * @param[in] is_oper Non-zero if \a sptr may use wildcard mask searches.
  * @return Zero.
  */
 int
-gline_list(struct Client *sptr, char *userhost)
+gline_list(struct Client *sptr, char *userhost, int is_oper)
 {
   struct Gline *gline;
   struct Gline *sgline;
   cidr_node *tnode = 0;
+  cidr_node *pnode = 0;
+  char *user, *host, *t_uh;
+  struct irc_in_addr mask;
+  unsigned char bits;
+  int found = 0;
 
   if (userhost) {
-    if (!(gline = gline_find(userhost, GLINE_ANY))) /* no such gline */
-      return send_reply(sptr, ERR_NOSUCHGLINE, userhost);
+    if (*userhost == '#' || *userhost == '&') {
+      gliter(BadChanGlineList, gline, sgline) {
+        if ((is_oper ? match(userhost, gline->gl_user) :
+             ircd_strcmp(userhost, gline->gl_user)) != 0)
+          continue;
+        gline_list_send(sptr, gline);
+        found = 1;
+      }
+    } else {
+      DupString(t_uh, userhost);
+      canon_userhost(t_uh, &user, &host, "*");
 
-    /* send gline information along */
-    send_reply(sptr, RPL_GLIST, gline->gl_user,
-               gline->gl_host ? "@" : "",
-               gline->gl_host ? gline->gl_host : "",
-	       gline->gl_expire, gline->gl_lastmod,
-	       gline->gl_lifetime,
-	       GlineIsLocal(gline) ? cli_name(&me) : "*",
-	       gline->gl_state == GLOCAL_ACTIVATED ? ">" :
-	       (gline->gl_state == GLOCAL_DEACTIVATED ? "<" : ""),
-	       GlineIsRemActive(gline) ? '+' : '-', gline->gl_reason);
+      if (*user != '$' && host && !string_has_wildcards(host) &&
+          ipmask_parse(host, &mask, &bits)) {
+        /* Numeric CIDR containment, same walk gline_lookup() uses for a
+         * real connection: finds the CIDR parent as well as every
+         * G-line sharing the exact node. ipmask_parse() also accepts
+         * the legacy "10.20.*" trailing-wildcard shorthand as a plain
+         * /16, so wildcard characters are excluded here first to keep
+         * those routed through the text-covering search below instead
+         * of a numeric lookup capped at the wrong depth. */
+        gliterIpMask(gline, sgline, &mask, bits, GlobalIpMaskPTree, tnode, pnode) {
+          if (match(user, gline->gl_user) != 0)
+            continue;
+          gline_list_send(sptr, gline);
+          found = 1;
+        }
+
+        /* Family-ambiguous ip masks (e.g. *@::/0) never enter the
+         * per-family tree; gline_lookup() still enforces them via a
+         * numeric ipmask_check() against GlobalGlineList. Only active
+         * ones are surfaced here, matching gline_lookup(): an inactive
+         * catch-all doesn't actually affect the queried ip/cidr, so
+         * there's no false-negative risk to guard against for it. */
+        gliter(GlobalGlineList, gline, sgline) {
+          if (!GlineIsIpMask(gline) || !GlineIsActive(gline))
+            continue;
+          if (match(user, gline->gl_user) != 0)
+            continue;
+          if (!ipmask_check(&mask, &gline->gl_addr, gline->gl_bits))
+            continue;
+          gline_list_send(sptr, gline);
+          found = 1;
+        }
+      } else if (is_oper) {
+        /* Oper-only: the mask doesn't parse as an ip/cidr, so fall back
+         * to the historical wildcard-pattern-covers-mask-text search. */
+        if (GlobalIpMaskPTree) {
+          CIDR_ITER(GlobalIpMaskPTree, tnode) {
+            gliter((struct Gline *) tnode->data, gline, sgline) {
+              if (!((gline->gl_host && host && match(host, gline->gl_host) == 0) ||
+                    (!gline->gl_host && !host)))
+                continue;
+              if (match(user, gline->gl_user) != 0)
+                continue;
+              gline_list_send(sptr, gline);
+              found = 1;
+            }
+          } CIDR_ITER_END;
+        }
+
+        gliter(GlobalGlineList, gline, sgline) {
+          if (!((gline->gl_host && host && match(host, gline->gl_host) == 0) ||
+                (!gline->gl_host && !host)))
+            continue;
+          if (match(user, gline->gl_user) != 0)
+            continue;
+          gline_list_send(sptr, gline);
+          found = 1;
+        }
+      } else {
+        /* Non-oper: exact match only, no wildcard/text-covering search
+         * over the mask itself. A mask with a host part matches that
+         * host exactly (wildcards apply only to the user@ part); a
+         * $-prefixed mask has no separate host to anchor on, so the
+         * whole pattern must match exactly instead. */
+        gliter(GlobalGlineList, gline, sgline) {
+          if (host) {
+            if (!(gline->gl_host && ircd_strcmp(host, gline->gl_host) == 0))
+              continue;
+            if (match(user, gline->gl_user) != 0)
+              continue;
+          } else {
+            if (gline->gl_host || ircd_strcmp(user, gline->gl_user) != 0)
+              continue;
+          }
+          gline_list_send(sptr, gline);
+          found = 1;
+        }
+      }
+
+      MyFree(t_uh);
+    }
+
+    if (!found)
+      return send_reply(sptr, ERR_NOSUCHGLINE, userhost);
   } else {
     if (GlobalIpMaskPTree) {
       CIDR_ITER(GlobalIpMaskPTree, tnode) {
-        gliter((struct Gline *) tnode->data, gline, sgline) {
-          send_reply(sptr, RPL_GLIST, gline->gl_user,
-          gline->gl_host ? "@" : "",
-          gline->gl_host ? gline->gl_host : "",
-          gline->gl_expire, gline->gl_lastmod,
-          gline->gl_lifetime,
-          GlineIsLocal(gline) ? cli_name(&me) : "*",
-          gline->gl_state == GLOCAL_ACTIVATED ? ">" :
-          (gline->gl_state == GLOCAL_DEACTIVATED ? "<" : ""),
-          GlineIsRemActive(gline) ? '+' : '-', gline->gl_reason);
-        }
+        gliter((struct Gline *) tnode->data, gline, sgline)
+          gline_list_send(sptr, gline);
       } CIDR_ITER_END;
     }
 
-    gliter(GlobalGlineList, gline, sgline) {
-      send_reply(sptr, RPL_GLIST, gline->gl_user,
-		 gline->gl_host ? "@" : "",
-		 gline->gl_host ? gline->gl_host : "",
-		 gline->gl_expire, gline->gl_lastmod,
-		 gline->gl_lifetime,
-		 GlineIsLocal(gline) ? cli_name(&me) : "*",
-		 gline->gl_state == GLOCAL_ACTIVATED ? ">" :
-		 (gline->gl_state == GLOCAL_DEACTIVATED ? "<" : ""),
-		 GlineIsRemActive(gline) ? '+' : '-', gline->gl_reason);
-    }
+    gliter(GlobalGlineList, gline, sgline)
+      gline_list_send(sptr, gline);
 
-    gliter(BadChanGlineList, gline, sgline) {
-      send_reply(sptr, RPL_GLIST, gline->gl_user, "", "",
-		 gline->gl_expire, gline->gl_lastmod,
-		 gline->gl_lifetime,
-		 GlineIsLocal(gline) ? cli_name(&me) : "*",
-		 gline->gl_state == GLOCAL_ACTIVATED ? ">" :
-		 (gline->gl_state == GLOCAL_DEACTIVATED ? "<" : ""),
-		 GlineIsRemActive(gline) ? '+' : '-', gline->gl_reason);
-    }
+    gliter(BadChanGlineList, gline, sgline)
+      gline_list_send(sptr, gline);
   }
 
   /* end of gline information */

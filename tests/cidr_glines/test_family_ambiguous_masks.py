@@ -32,6 +32,9 @@ from p10_server import P10Server
 pytestmark = pytest.mark.single_server
 
 RPL_YOUREOPER = "381"
+RPL_GLIST = "280"
+RPL_ENDOFGLIST = "281"
+ERR_NOSUCHGLINE = "512"
 
 
 async def oper_up(client):
@@ -58,14 +61,27 @@ async def oper(ircd_hub):
 
 
 async def gline_state(oper, mask):
-    """Query `GLINE <mask>` and return '+', '-', or None (no such G-line)."""
+    """Query `GLINE <mask>` and return '+', '-', or None (no such G-line).
+
+    gline_list() can report more than one matching G-line per query now
+    -- e.g. an unrelated family-ambiguous G-line can legitimately share
+    a numeric match with `mask` -- so this drains every reply up to
+    RPL_ENDOFGLIST/ERR_NOSUCHGLINE and returns the state of the entry
+    whose own mask equals `mask`, instead of assuming a single reply.
+    Draining fully also matters so leftover buffered replies don't
+    corrupt whatever is read next on this connection.
+    """
     await oper.send(f"GLINE {mask}")
+    state = None
     while True:
         msg = await oper.recv(timeout=5.0)
-        if msg.command == "512":
+        if msg.command == ERR_NOSUCHGLINE:
             return None
-        if msg.command == "280":
-            return msg.params[-2]
+        if msg.command == RPL_GLIST:
+            if msg.params[1] == mask:
+                state = msg.params[-2]
+        elif msg.command == RPL_ENDOFGLIST:
+            return state
 
 
 async def wait_gline_state(oper, mask, want, timeout=10.0):

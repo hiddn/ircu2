@@ -386,7 +386,7 @@ mo_gline(struct Client *cptr, struct Client *sptr, int parc, char *parv[])
   char *mask = parv[1], *target = 0, *reason = 0, *end;
 
   if (parc < 2)
-    return gline_list(sptr, 0);
+    return gline_list(sptr, 0, 1);
 
   if (*mask == '!') {
     mask++;
@@ -421,7 +421,7 @@ mo_gline(struct Client *cptr, struct Client *sptr, int parc, char *parv[])
   switch (action) {
   case GLINE_MODIFY: /* no specific action on the G-line... */
     if (parc == 2) /* user wants a listing of a specific G-line */
-      return gline_list(sptr, mask);
+      return gline_list(sptr, mask, 1);
     else if (parc < 4) /* must have target and expire, minimum */
       return need_more_params(sptr, "GLINE");
 
@@ -654,5 +654,5 @@ m_gline(struct Client *cptr, struct Client *sptr, int parc, char *parv[])
   if (parc < 2)
     return send_reply(sptr, ERR_NOSUCHGLINE, "");
 
-  return gline_list(sptr, parv[1]);
+  return gline_list(sptr, parv[1], 0);
 }
